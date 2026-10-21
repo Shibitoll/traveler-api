@@ -1,0 +1,1 @@
+ALTER TABLE locations ADD COLUMN IF NOT EXISTS estimated_cost NUMERIC(10, 2) DEFAULT 0.00;
