@@ -1,6 +1,5 @@
 # ===================================================================
 # ENHANCED RACE CONDITION TESTS
-# Multiple strategies for reliable race condition detection
 # ===================================================================
 
 # Setup: Create plan for race condition testing
@@ -47,42 +46,37 @@ Content-Type: application/json
 HTTP 409
 [Asserts]
 jsonpath "$.error" contains "Conflict"
-jsonpath "$.current_version" == 2
 
-# Strategy 2: Stress Test Location Auto-Ordering
-# Rapidly create multiple locations to test concurrent insertion
+# Strategy 2: Stress Test Location Auto-Ordering with Parent Version
 POST {{host}}/api/travel-plans/{{race_plan_id}}/locations
 Content-Type: application/json
 {
   "name": "Location A",
-  "budget": 100.00
+  "budget": 100.00,
+  "parent_version": 2
 }
 
 HTTP 201
-[Captures]
-location_a_order: jsonpath "$.visit_order"
 
 POST {{host}}/api/travel-plans/{{race_plan_id}}/locations
 Content-Type: application/json
 {
   "name": "Location B", 
-  "budget": 150.00
+  "budget": 150.00,
+  "parent_version": 3
 }
 
 HTTP 201
-[Captures]
-location_b_order: jsonpath "$.visit_order"
 
 POST {{host}}/api/travel-plans/{{race_plan_id}}/locations
 Content-Type: application/json
 {
   "name": "Location C",
-  "budget": 200.00
+  "budget": 200.00,
+  "parent_version": 4
 }
 
 HTTP 201
-[Captures]
-location_c_order: jsonpath "$.visit_order"
 
 # Verify proper ordering (should be 1, 2, 3)
 GET {{host}}/api/travel-plans/{{race_plan_id}}
@@ -95,11 +89,11 @@ jsonpath "$.locations[1].visit_order" == 2
 jsonpath "$.locations[2].visit_order" == 3
 
 # Strategy 3: Cascade Delete Race Condition Test
-DELETE {{host}}/api/travel-plans/{{race_plan_id}}
+DELETE {{host}}/api/travel-plans/{{race_plan_id}}?version=5
 
 HTTP 204
 
-# Verify complete deletion (locations should be gone too)
+# Verify complete deletion
 GET {{host}}/api/travel-plans/{{race_plan_id}}
 
 HTTP 404

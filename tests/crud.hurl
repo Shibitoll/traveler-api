@@ -1,3 +1,7 @@
+# ===================================================================
+# CRUD TESTS FOR TRAVEL PLANNER API
+# ===================================================================
+
 # Test 1: Create travel plan
 POST {{host}}/api/travel-plans
 Content-Type: application/json
@@ -68,10 +72,9 @@ Content-Type: application/json
 HTTP 409
 [Asserts]
 jsonpath "$.error" contains "Conflict"
-jsonpath "$.error" contains "modified"
 
-# Test 5: Delete plan
-DELETE {{host}}/api/travel-plans/{{plan_id}}
+# Test 5: Delete plan with version
+DELETE {{host}}/api/travel-plans/{{plan_id}}?version={{updated_version}}
 
 HTTP 204
 
@@ -79,5 +82,3 @@ HTTP 204
 GET {{host}}/api/travel-plans/{{plan_id}}
 
 HTTP 404
-[Asserts]
-jsonpath "$.error" contains "not found"

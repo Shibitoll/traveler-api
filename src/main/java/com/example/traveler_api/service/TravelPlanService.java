@@ -134,7 +134,11 @@ public class TravelPlanService {
             throw new OptimisticLockingConflictException("Conflict: Travel plan was modified by another user", existingPlan.getVersion());
         }
 
-        travelPlanRepository.delete(existingPlan);
+        try {
+            travelPlanRepository.delete(existingPlan);
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw new OptimisticLockingConflictException("Conflict: Plan was modified concurrently during deletion", existingPlan.getVersion());
+        }
     }
 
     private void validateTravelPlan(TravelPlan plan) {

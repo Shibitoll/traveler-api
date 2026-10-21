@@ -6,6 +6,7 @@ import com.example.traveler_api.exception.OptimisticLockingConflictException;
 import com.example.traveler_api.exception.ResourceNotFoundException;
 import com.example.traveler_api.repository.LocationRepository;
 import com.example.traveler_api.repository.TravelPlanRepository;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,13 +30,16 @@ public class LocationService {
             throw new IllegalArgumentException("Location body cannot be null");
         }
 
-        validateLocationForPlan(planId, location);
+        validateLocationFields(location);
 
-        TravelPlan plan = travelPlanRepository.findByIdWithLock(planId)
+        TravelPlan plan = travelPlanRepository.findById(planId)
                 .orElseThrow(() -> new ResourceNotFoundException("Travel plan not found with id: " + planId));
 
         if (location.getParentVersion() != null && !location.getParentVersion().equals(plan.getVersion())) {
-            throw new OptimisticLockingConflictException("Conflict: Parent plan version mismatch", plan.getVersion());
+            throw new OptimisticLockingConflictException(
+                    "Conflict: Parent plan version mismatch. Expected version: " + plan.getVersion(),
+                    plan.getVersion()
+            );
         }
 
         Integer maxOrder = locationRepository.findMaxOrderByTravelPlanId(planId);
@@ -50,19 +54,22 @@ public class LocationService {
         location.setTravelPlan(plan);
 
         plan.setVersion(plan.getVersion() + 1);
-        travelPlanRepository.save(plan);
 
-        return locationRepository.save(location);
+        try {
+            travelPlanRepository.save(plan);
+            return locationRepository.save(location);
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw new OptimisticLockingConflictException(
+                    "Conflict: Parent plan was modified concurrently by another user",
+                    plan.getVersion()
+            );
+        }
     }
 
     @Transactional
     public Location updateLocation(UUID locationId, Location updatedData) {
         if (updatedData == null) {
             throw new IllegalArgumentException("Location body cannot be null");
-        }
-
-        if (updatedData.getId() != null && !updatedData.getId().equals(locationId)) {
-            throw new IllegalArgumentException("Location ID in path does not match ID in request body");
         }
 
         validateLocationFields(updatedData);
@@ -73,41 +80,33 @@ public class LocationService {
         TravelPlan parentPlan = existingLocation.getTravelPlan();
 
         if (updatedData.getParentVersion() != null && !updatedData.getParentVersion().equals(parentPlan.getVersion())) {
-            throw new OptimisticLockingConflictException("Conflict: Parent plan version mismatch", parentPlan.getVersion());
+            throw new OptimisticLockingConflictException(
+                    "Conflict: Parent plan version mismatch. Expected version: " + parentPlan.getVersion(),
+                    parentPlan.getVersion()
+            );
         }
 
-        if (updatedData.getName() != null) {
-            existingLocation.setName(updatedData.getName());
-        }
-        if (updatedData.getAddress() != null) {
-            existingLocation.setAddress(updatedData.getAddress());
-        }
-        if (updatedData.getLatitude() != null) {
-            existingLocation.setLatitude(updatedData.getLatitude());
-        }
-        if (updatedData.getLongitude() != null) {
-            existingLocation.setLongitude(updatedData.getLongitude());
-        }
-        if (updatedData.getArrivalDate() != null) {
-            existingLocation.setArrivalDate(updatedData.getArrivalDate());
-        }
-        if (updatedData.getDepartureDate() != null) {
-            existingLocation.setDepartureDate(updatedData.getDepartureDate());
-        }
-        if (updatedData.getNotes() != null) {
-            existingLocation.setNotes(updatedData.getNotes());
-        }
-        if (updatedData.getEstimatedCost() != null) {
-            existingLocation.setEstimatedCost(updatedData.getEstimatedCost());
-        }
-        if (updatedData.getLocationOrder() != null) {
-            existingLocation.setLocationOrder(updatedData.getLocationOrder());
-        }
+        if (updatedData.getName() != null) existingLocation.setName(updatedData.getName());
+        if (updatedData.getAddress() != null) existingLocation.setAddress(updatedData.getAddress());
+        if (updatedData.getLatitude() != null) existingLocation.setLatitude(updatedData.getLatitude());
+        if (updatedData.getLongitude() != null) existingLocation.setLongitude(updatedData.getLongitude());
+        if (updatedData.getArrivalDate() != null) existingLocation.setArrivalDate(updatedData.getArrivalDate());
+        if (updatedData.getDepartureDate() != null) existingLocation.setDepartureDate(updatedData.getDepartureDate());
+        if (updatedData.getNotes() != null) existingLocation.setNotes(updatedData.getNotes());
+        if (updatedData.getEstimatedCost() != null) existingLocation.setEstimatedCost(updatedData.getEstimatedCost());
+        if (updatedData.getLocationOrder() != null) existingLocation.setLocationOrder(updatedData.getLocationOrder());
 
         parentPlan.setVersion(parentPlan.getVersion() + 1);
-        travelPlanRepository.save(parentPlan);
 
-        return locationRepository.save(existingLocation);
+        try {
+            travelPlanRepository.save(parentPlan);
+            return locationRepository.save(existingLocation);
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw new OptimisticLockingConflictException(
+                    "Conflict: Parent plan was modified concurrently by another user",
+                    parentPlan.getVersion()
+            );
+        }
     }
 
     @Transactional
@@ -118,26 +117,23 @@ public class LocationService {
         TravelPlan parentPlan = location.getTravelPlan();
 
         if (parentVersion != null && !parentVersion.equals(parentPlan.getVersion())) {
-            throw new OptimisticLockingConflictException("Conflict: Parent plan version mismatch", parentPlan.getVersion());
+            throw new OptimisticLockingConflictException(
+                    "Conflict: Parent plan version mismatch. Expected version: " + parentPlan.getVersion(),
+                    parentPlan.getVersion()
+            );
         }
 
         parentPlan.setVersion(parentPlan.getVersion() + 1);
-        travelPlanRepository.save(parentPlan);
 
-        locationRepository.delete(location);
-    }
-
-    private void validateLocationForPlan(UUID planId, Location loc) {
-        if (loc.getId() != null) {
-            throw new IllegalArgumentException("Cannot specify ID when creating new location");
+        try {
+            travelPlanRepository.save(parentPlan);
+            locationRepository.delete(location);
+        } catch (ObjectOptimisticLockingFailureException e) {
+            throw new OptimisticLockingConflictException(
+                    "Conflict: Parent plan was modified concurrently by another user",
+                    parentPlan.getVersion()
+            );
         }
-        if (loc.getBodyTravelPlanId() != null && !loc.getBodyTravelPlanId().equals(planId)) {
-            throw new IllegalArgumentException("travel_plan_id in body does not match path variable");
-        }
-        if (loc.getParentVersion() != null && loc.getParentVersion() < 1) {
-            throw new IllegalArgumentException("parent_version must be >= 1");
-        }
-        validateLocationFields(loc);
     }
 
     private void validateLocationFields(Location loc) {
@@ -164,6 +160,9 @@ public class LocationService {
         if (loc.getLongitude() != null && (loc.getLongitude() < -180.0 || loc.getLongitude() > 180.0)) {
             throw new IllegalArgumentException("Longitude must be between -180 and 180");
         }
+        if ((loc.getLatitude() != null && loc.getLongitude() == null) || (loc.getLatitude() == null && loc.getLongitude() != null)) {
+            throw new IllegalArgumentException("Latitude and longitude must be provided together");
+        }
         if (loc.getDepartureDate() != null && loc.getArrivalDate() == null) {
             throw new IllegalArgumentException("Arrival date is required if departure date is provided");
         }
@@ -171,9 +170,6 @@ public class LocationService {
             if (loc.getDepartureDate().isBefore(loc.getArrivalDate())) {
                 throw new IllegalArgumentException("Departure date must be after or equal to arrival date");
             }
-        }
-        if (loc.getLocationOrder() != null && loc.getLocationOrder() < 1) {
-            throw new IllegalArgumentException("Location visit_order must be >= 1");
         }
     }
 }
